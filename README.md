@@ -1,28 +1,33 @@
 # upstat-probe-lambda
 
-Probe externo do Upstat em **AWS Lambda** — substitui os Cloudflare Workers
-pra ter **localização geográfica garantida** por região AWS.
+UpStat's external probe running on **AWS Lambda** — replaces the older
+Cloudflare Workers probes to give us **guaranteed geographic location** per
+AWS region.
 
-- `handler.py` — lógica do probe (igual ao worker: pega jobs → checa → reporta)
-- `template.yaml` — SAM: Lambda `python3.12` + EventBridge cron de 1 min
-- `requirements.txt` — única dep: `httpx` (HTTP client async)
+Each region is its own SAM stack: a Python 3.12 Lambda triggered every minute
+by EventBridge that fetches monitor jobs from the UpStat backend, runs the
+checks, and reports the results.
 
-## Pré-requisitos
+- `handler.py` — probe logic (same contract as the worker: fetch jobs → check → report)
+- `template.yaml` — SAM: `python3.12` Lambda + EventBridge 1-minute schedule
+- `requirements.txt` — single dependency: `httpx` (async HTTP client)
 
-- AWS CLI configurado (`aws configure`) com credenciais da conta
-- SAM CLI instalado (`sam --version`)
-- O `PROBE_SECRET` (mesmo valor do `PROBE_SECRET` no env do backend no Render —
-  copie de lá, não versione aqui)
+## Prerequisites
+
+- AWS CLI configured (`aws configure`) with valid credentials
+- SAM CLI installed (`sam --version`)
+- The `PROBE_SECRET` (same value as `PROBE_SECRET` on the backend's Render env
+  — copy it from there, do not commit it)
 
 ## Deploy
 
-Cada região AWS é uma stack independente. Roda o build uma vez e deploya nas duas:
+Each AWS region is an independent stack. Build once, deploy twice:
 
 ```bash
 cd upstat-probe-lambda
 sam build
 
-# Europa — Irlanda
+# Europe — Ireland
 sam deploy \
   --region eu-west-1 \
   --stack-name upstat-probe-eu \
@@ -30,7 +35,7 @@ sam deploy \
   --capabilities CAPABILITY_IAM \
   --parameter-overrides ProbeRegion=eu-west ProbeSecret=<SECRET>
 
-# América do Sul — São Paulo
+# South America — São Paulo
 sam deploy \
   --region sa-east-1 \
   --stack-name upstat-probe-br \
@@ -39,26 +44,27 @@ sam deploy \
   --parameter-overrides ProbeRegion=sa-east ProbeSecret=<SECRET>
 ```
 
-> `BackendUrl` tem default `https://api.upstat.online/api`. Pra sobrescrever,
-> adicione `BackendUrl=...` no `--parameter-overrides`.
+> `BackendUrl` defaults to `https://api.upstat.online/api`. To override, add
+> `BackendUrl=...` to `--parameter-overrides`.
 
-## Verificar
+## Verify
 
-Logs em tempo real (mostra `checked=N errors=0` a cada minuto):
+Tail the logs (you should see `checked=N errors=0` every minute):
 
 ```bash
 sam logs --stack-name upstat-probe-eu --region eu-west-1 --tail
 ```
 
-Pra confirmar a geo real, a própria região AWS já garante a localização —
-não precisa medir colo como no Cloudflare.
+To confirm geographic accuracy, the AWS region itself is the guarantee — no
+need to measure colo like we did with Cloudflare.
 
-## ⚠️ IMPORTANTE — desligar os Cloudflare Workers ao migrar
+## ⚠️ IMPORTANT — turn off the Cloudflare Workers when migrating
 
-Os workers antigos (`upstat-probe-eu` / `upstat-probe-br` na Cloudflare) escrevem
-pings pras MESMAS regiões (`eu-west` / `sa-east`), mas saindo de Singapura. Se
-deixar os dois rodando, vão **duplicar e conflitar** os dados. Ao confirmar que a
-Lambda está reportando, **delete os workers da Cloudflare**:
+The old workers (`upstat-probe-eu` / `upstat-probe-br` on Cloudflare) write
+pings for the **same regions** (`eu-west` / `sa-east`), but originating from
+Singapore. If both run at the same time, they will **duplicate and conflict**
+data. Once the Lambda is confirmed reporting, **delete the Cloudflare
+workers**:
 
 ```bash
 cd ../upstat-probe-worker
@@ -66,4 +72,5 @@ npx wrangler delete --config wrangler.eu.toml
 npx wrangler delete --config wrangler.br.toml
 ```
 
-A região `us-east` continua sendo o probe local do Render — não muda nada.
+The `us-east` region keeps using the local probe on Render — nothing changes
+there.
