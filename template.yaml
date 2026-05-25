@@ -1,0 +1,56 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  Upstat probe externo (geo real). Lambda acionada por EventBridge a cada
+  minuto. Deploy por região AWS — uma stack em eu-west-1 (Irlanda) e outra
+  em sa-east-1 (São Paulo). A localização da Lambda É garantida pela região
+  AWS, ao contrário do Cloudflare Worker.
+
+Parameters:
+  ProbeRegion:
+    Type: String
+    Description: Rótulo lógico da região (casa com o catálogo `regions` do backend)
+    AllowedValues:
+      - eu-west
+      - sa-east
+  BackendUrl:
+    Type: String
+    Default: https://api.upstat.online/api
+    Description: Base URL do backend (com /api)
+  ProbeSecret:
+    Type: String
+    NoEcho: true
+    Description: Mesmo valor do PROBE_SECRET configurado no backend (Render)
+
+Globals:
+  Function:
+    Runtime: python3.12
+    # Checks podem levar até 10s cada; rodam em paralelo, mas 30s dá folga.
+    Timeout: 30
+    MemorySize: 128
+
+Resources:
+  ProbeFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub upstat-probe-${ProbeRegion}
+      CodeUri: ./
+      Handler: handler.lambda_handler
+      Description: !Sub "Upstat probe externo — região ${ProbeRegion}"
+      Environment:
+        Variables:
+          REGION: !Ref ProbeRegion
+          BACKEND_URL: !Ref BackendUrl
+          PROBE_SECRET: !Ref ProbeSecret
+      Events:
+        EveryMinute:
+          Type: Schedule
+          Properties:
+            Schedule: rate(1 minute)
+            Name: !Sub upstat-probe-${ProbeRegion}-1min
+            Description: Dispara o probe a cada minuto
+
+Outputs:
+  ProbeFunctionArn:
+    Description: ARN da função do probe
+    Value: !GetAtt ProbeFunction.Arn

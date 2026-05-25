@@ -1,0 +1,11 @@
+# SAM build artifacts (regenerados por `sam build`)
+.aws-sam/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# SAM deploy config local (pode acabar gravando ProbeSecret se rodar `sam deploy --guided`)
+samconfig.toml
