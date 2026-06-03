@@ -13,6 +13,8 @@ Parameters:
     AllowedValues:
       - eu-west
       - sa-east
+      - ap-southeast
+      - us-west
   BackendUrl:
     Type: String
     Default: https://api.upstat.online/api

@@ -21,7 +21,7 @@ checks, and reports the results.
 
 ## Deploy
 
-Each AWS region is an independent stack. Build once, deploy twice:
+Each AWS region is an independent stack. Build once, deploy per region:
 
 ```bash
 cd upstat-probe-lambda
@@ -42,7 +42,27 @@ sam deploy \
   --resolve-s3 \
   --capabilities CAPABILITY_IAM \
   --parameter-overrides ProbeRegion=sa-east ProbeSecret=<SECRET>
+
+# Asia Pacific — Singapore
+sam deploy \
+  --region ap-southeast-1 \
+  --stack-name upstat-probe-sg \
+  --resolve-s3 \
+  --capabilities CAPABILITY_IAM \
+  --parameter-overrides ProbeRegion=ap-southeast ProbeSecret=<SECRET>
+
+# US West — Oregon
+sam deploy \
+  --region us-west-2 \
+  --stack-name upstat-probe-usw \
+  --resolve-s3 \
+  --capabilities CAPABILITY_IAM \
+  --parameter-overrides ProbeRegion=us-west ProbeSecret=<SECRET>
 ```
+
+> The `region_code` strings (`ap-southeast`, `us-west`) must exist in the
+> backend's `regions` catalog. They ship `is_active=false` — flip them to
+> `true` only **after** the stack is confirmed reporting (see "Go live" below).
 
 > `BackendUrl` defaults to `https://api.upstat.online/api`. To override, add
 > `BackendUrl=...` to `--parameter-overrides`.
@@ -57,6 +77,21 @@ sam logs --stack-name upstat-probe-eu --region eu-west-1 --tail
 
 To confirm geographic accuracy, the AWS region itself is the guarantee — no
 need to measure colo like we did with Cloudflare.
+
+## Go live (activate a new region)
+
+New PoPs (`ap-southeast`, `us-west`) are seeded `is_active=false`, so they are
+invisible in the app until you flip them. Once the stack is confirmed reporting
+(`checked=N errors=0` in the logs and pings landing with the right
+`region_code`), activate it in the backend Postgres:
+
+```sql
+UPDATE regions SET is_active = true WHERE code IN ('ap-southeast', 'us-west');
+```
+
+Only after this do they appear in the region selector and on the latency map.
+To pull a region back offline, set `is_active = false` again — existing pings
+stay, but it stops being selectable.
 
 ## ⚠️ IMPORTANT — turn off the Cloudflare Workers when migrating
 
